@@ -10,21 +10,22 @@ pipeline {
         }
         stage('安装依赖') {
             steps {
-                echo '正在安装 Python 依赖...'
-                // 注意使用 py -m 来确保 Jenkins 调用正确的 Python 启动器
-                bat 'py -m pip install numpy requests openai'
+                echo '正在使用 Python 3.10 安装依赖...'
+                // 关键修改：强制指定 Python 3.10 的绝对路径 (注意更新为你电脑的真实路径)
+                bat 'C:\\Users\\Lenovo\\AppData\\Local\\Programs\\Python\\Python310-32\\python.exe -m pip install numpy requests openai'
             }
         }
         stage('运行评测 (冒烟测试)') {
             steps {
                 echo '正在执行 evaluate.py 进行自动化测试...'
-                bat 'py evaluate.py'
+                // 同样使用绝对路径启动 python
+                bat 'C:\\Users\\Lenovo\\AppData\\Local\\Programs\\Python\\Python310-32\\python.exe evaluate.py'
             }
         }
         stage('自动化部署') {
             steps {
                 echo '正在执行一键启动脚本重启全套服务...'
-                // 使用 PowerShell 调用你之前写的重启脚本
+                // 这里继续用 PowerShell 调用脚本，但你要确保 restart.ps1 里的命令也是绝对路径
                 bat 'powershell -ExecutionPolicy Bypass -File restart.ps1'
             }
         }
