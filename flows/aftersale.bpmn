@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_IT_Service" targetNamespace="http://bpmn.io/schema/bpmn" exporter="bpmn-js (https://demo.bpmn.io)" exporterVersion="18.16.0">
+  <bpmn:process id="Process_IT_Service_Request" isExecutable="false">
+    <!-- 开始与结束事件 -->
+    <bpmn:startEvent id="StartEvent_IT" name="收到IT求助">
+      <bpmn:outgoing>Flow_QueryTicket</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:endEvent id="EndEvent_End" name="流程结束">
+      <bpmn:incoming>Flow_ToEnd1</bpmn:incoming>
+      <bpmn:incoming>Flow_ToEnd2</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- 任务节点：配置了 DelegateExpression，对应实验三的 Handler -->
+    <bpmn:serviceTask id="Task_QueryTicket" name="查询工单详情" camunda:delegateExpression="${h_query_ticket}">
+      <bpmn:incoming>Flow_QueryTicket</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToIssueType</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <bpmn:serviceTask id="Task_NetworkDiagnosis" name="网络诊断与处理" camunda:delegateExpression="${h_diagnose_network}">
+      <bpmn:incoming>Flow_NetworkBranch</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToNetworkHeal</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="Task_AutoReset" name="自动密码重置" camunda:delegateExpression="${h_auto_reset}">
+      <bpmn:incoming>Flow_PasswordBranch</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToNotify_Pwd</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="Task_DeviceCheck" name="设备库查询(保修状态)" camunda:delegateExpression="${h_device_check}">
+      <bpmn:incoming>Flow_DefaultBranch</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToWarranty</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="Task_TriggerRecovery" name="触发网络自动恢复" camunda:delegateExpression="${h_trigger_recovery}">
+      <bpmn:incoming>Flow_Heal_True</bpmn:incoming>
+      <bpmn:outgoing>Flow_Heal_Done</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="Task_HumanSupport" name="转人工网络组" camunda:delegateExpression="${h_human_support}">
+      <bpmn:incoming>Flow_Heal_False</bpmn:incoming>
+      <bpmn:outgoing>Flow_Heal_Done2</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="Task_RequestReplacement" name="发起设备更换流程" camunda:delegateExpression="${h_replace_device}">
+      <bpmn:incoming>Flow_Warranty_True</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToNotify_Replace</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="Task_ProcurementRequest" name="发起采购申请" camunda:delegateExpression="${h_procure_device}">
+      <bpmn:incoming>Flow_Warranty_False</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToNotify_Procure</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="Task_Notify" name="通知用户" camunda:delegateExpression="${h_notify_user}">
+      <bpmn:incoming>Flow_Heal_Done</bpmn:incoming>
+      <bpmn:incoming>Flow_Heal_Done2</bpmn:incoming>
+      <bpmn:incoming>Flow_ToNotify_Pwd</bpmn:incoming>
+      <bpmn:incoming>Flow_ToNotify_Replace</bpmn:incoming>
+      <bpmn:incoming>Flow_ToNotify_Procure</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToEnd1</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- 网关节点与分支条件 -->
+    <bpmn:exclusiveGateway id="Gateway_IssueType" name="问题类型判断">
+      <bpmn:incoming>Flow_ToIssueType</bpmn:incoming>
+      <bpmn:outgoing>Flow_NetworkBranch</bpmn:outgoing>
+      <bpmn:outgoing>Flow_PasswordBranch</bpmn:outgoing>
+      <bpmn:outgoing>Flow_DefaultBranch</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:exclusiveGateway id="Gateway_NetworkHeal" name="网络是否可自愈">
+      <bpmn:incoming>Flow_ToNetworkHeal</bpmn:incoming>
+      <bpmn:outgoing>Flow_Heal_True</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Heal_False</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:exclusiveGateway id="Gateway_Warranty" name="设备是否在保修期">
+      <bpmn:incoming>Flow_ToWarranty</bpmn:incoming>
+      <bpmn:outgoing>Flow_Warranty_True</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Warranty_False</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <!-- 顺序流配置 (Condition) -->
+    <bpmn:sequenceFlow id="Flow_QueryTicket" sourceRef="StartEvent_IT" targetRef="Task_QueryTicket" />
+    <bpmn:sequenceFlow id="Flow_ToIssueType" sourceRef="Task_QueryTicket" targetRef="Gateway_IssueType" />
+    
+    <!-- 网关1 分支 -->
+    <bpmn:sequenceFlow id="Flow_NetworkBranch" name="网络中断" sourceRef="Gateway_IssueType" targetRef="Task_NetworkDiagnosis">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${issue_type == 'network'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_PasswordBranch" name="账号密码" sourceRef="Gateway_IssueType" targetRef="Task_AutoReset">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${issue_type == 'password'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_DefaultBranch" name="设备故障(默认)" sourceRef="Gateway_IssueType" targetRef="Task_DeviceCheck" />
+
+    <!-- 网络诊断分支 -->
+    <bpmn:sequenceFlow id="Flow_ToNetworkHeal" sourceRef="Task_NetworkDiagnosis" targetRef="Gateway_NetworkHeal" />
+    <bpmn:sequenceFlow id="Flow_Heal_True" name="是" sourceRef="Gateway_NetworkHeal" targetRef="Task_TriggerRecovery">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${network_heal == True}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Heal_False" name="否" sourceRef="Gateway_NetworkHeal" targetRef="Task_HumanSupport" />
+
+    <!-- 设备保修分支 -->
+    <bpmn:sequenceFlow id="Flow_ToWarranty" sourceRef="Task_DeviceCheck" targetRef="Gateway_Warranty" />
+    <bpmn:sequenceFlow id="Flow_Warranty_True" name="是" sourceRef="Gateway_Warranty" targetRef="Task_RequestReplacement">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${is_in_warranty == True}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Warranty_False" name="否" sourceRef="Gateway_Warranty" targetRef="Task_ProcurementRequest" />
+
+    <!-- 汇聚到通知 -->
+    <bpmn:sequenceFlow id="Flow_Heal_Done" sourceRef="Task_TriggerRecovery" targetRef="Task_Notify" />
+    <bpmn:sequenceFlow id="Flow_Heal_Done2" sourceRef="Task_HumanSupport" targetRef="Task_Notify" />
+    <bpmn:sequenceFlow id="Flow_ToNotify_Pwd" sourceRef="Task_AutoReset" targetRef="Task_Notify" />
+    <bpmn:sequenceFlow id="Flow_ToNotify_Replace" sourceRef="Task_RequestReplacement" targetRef="Task_Notify" />
+    <bpmn:sequenceFlow id="Flow_ToNotify_Procure" sourceRef="Task_ProcurementRequest" targetRef="Task_Notify" />
+
+    <!-- 结束 -->
+    <bpmn:sequenceFlow id="Flow_ToEnd1" sourceRef="Task_Notify" targetRef="EndEvent_End" />
+    <bpmn:sequenceFlow id="Flow_ToEnd2" sourceRef="Task_Notify" targetRef="EndEvent_End" />
+
+  </bpmn:process>
+  
+  <!-- BPMNDI 布局信息（自动生成，确保你在 bpmn.io 拖拽不会有问题） -->
+  <bpmndi:BPMNDiagram id="BPMNDiagram_IT">
+    <bpmndi:BPMNPlane id="BPMNPlane_IT" bpmnElement="Process_IT_Service_Request">
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_IT" bpmnElement="StartEvent_IT"><dc:Bounds x="150" y="250" width="36" height="36" /><bpmndi:BPMNLabel><dc:Bounds x="141" y="293" width="54" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_QueryTicket_di" bpmnElement="Task_QueryTicket"><dc:Bounds x="250" y="230" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_IssueType_di" bpmnElement="Gateway_IssueType" isMarkerVisible="true"><dc:Bounds x="415" y="245" width="50" height="50" /><bpmndi:BPMNLabel><dc:Bounds x="475" y="256.5" width="66" height="27" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_NetworkDiagnosis_di" bpmnElement="Task_NetworkDiagnosis"><dc:Bounds x="540" y="100" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_NetworkHeal_di" bpmnElement="Gateway_NetworkHeal" isMarkerVisible="true"><dc:Bounds x="775" y="115" width="50" height="50" /><bpmndi:BPMNLabel><dc:Bounds x="835" y="126.5" width="77" height="27" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_TriggerRecovery_di" bpmnElement="Task_TriggerRecovery"><dc:Bounds x="910" y="20" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_HumanSupport_di" bpmnElement="Task_HumanSupport"><dc:Bounds x="910" y="190" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AutoReset_di" bpmnElement="Task_AutoReset"><dc:Bounds x="540" y="380" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_DeviceCheck_di" bpmnElement="Task_DeviceCheck"><dc:Bounds x="540" y="550" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Warranty_di" bpmnElement="Gateway_Warranty" isMarkerVisible="true"><dc:Bounds x="715" y="565" width="50" height="50" /><bpmndi:BPMNLabel><dc:Bounds x="775" y="576.5" width="77" height="27" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_RequestReplacement_di" bpmnElement="Task_RequestReplacement"><dc:Bounds x="880" y="410" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ProcurementRequest_di" bpmnElement="Task_ProcurementRequest"><dc:Bounds x="880" y="600" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Notify_di" bpmnElement="Task_Notify"><dc:Bounds x="1100" y="270" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_End_di" bpmnElement="EndEvent_End"><dc:Bounds x="1260" y="295" width="36" height="36" /><bpmndi:BPMNLabel><dc:Bounds x="1251" y="338" width="54" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <!-- 连线大致坐标（仅做示意，导入后你可以自己重新拖拽调整位置） -->
+      <bpmndi:BPMNEdge id="Flow_QueryTicket_di" bpmnElement="Flow_QueryTicket"><di:waypoint x="186" y="270" /><di:waypoint x="250" y="270" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToIssueType_di" bpmnElement="Flow_ToIssueType"><di:waypoint x="350" y="270" /><di:waypoint x="415" y="270" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_NetworkBranch_di" bpmnElement="Flow_NetworkBranch"><di:waypoint x="440" y="245" /><di:waypoint x="440" y="140" /><di:waypoint x="540" y="140" /><bpmndi:BPMNLabel><dc:Bounds x="450" y="187" width="11" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_PasswordBranch_di" bpmnElement="Flow_PasswordBranch"><di:waypoint x="440" y="295" /><di:waypoint x="440" y="420" /><di:waypoint x="540" y="420" /><bpmndi:BPMNLabel><dc:Bounds x="450" y="357" width="11" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_DefaultBranch_di" bpmnElement="Flow_DefaultBranch"><di:waypoint x="440" y="295" /><di:waypoint x="440" y="590" /><di:waypoint x="540" y="590" /><bpmndi:BPMNLabel><dc:Bounds x="450" y="487" width="11" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToNetworkHeal_di" bpmnElement="Flow_ToNetworkHeal"><di:waypoint x="640" y="140" /><di:waypoint x="775" y="140" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Heal_True_di" bpmnElement="Flow_Heal_True"><di:waypoint x="800" y="115" /><di:waypoint x="800" y="60" /><di:waypoint x="910" y="60" /><bpmndi:BPMNLabel><dc:Bounds x="810" y="83" width="11" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Heal_False_di" bpmnElement="Flow_Heal_False"><di:waypoint x="800" y="165" /><di:waypoint x="800" y="230" /><di:waypoint x="910" y="230" /><bpmndi:BPMNLabel><dc:Bounds x="810" y="201" width="11" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToWarranty_di" bpmnElement="Flow_ToWarranty"><di:waypoint x="640" y="590" /><di:waypoint x="715" y="590" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Warranty_True_di" bpmnElement="Flow_Warranty_True"><di:waypoint x="740" y="565" /><di:waypoint x="740" y="450" /><di:waypoint x="880" y="450" /><bpmndi:BPMNLabel><dc:Bounds x="750" y="499" width="11" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Warranty_False_di" bpmnElement="Flow_Warranty_False"><di:waypoint x="740" y="615" /><di:waypoint x="740" y="640" /><di:waypoint x="880" y="640" /><bpmndi:BPMNLabel><dc:Bounds x="750" y="630" width="11" height="14" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Heal_Done_di" bpmnElement="Flow_Heal_Done"><di:waypoint x="1010" y="60" /><di:waypoint x="1010" y="310" /><di:waypoint x="1100" y="310" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Heal_Done2_di" bpmnElement="Flow_Heal_Done2"><di:waypoint x="1010" y="230" /><di:waypoint x="1010" y="310" /><di:waypoint x="1100" y="310" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToNotify_Pwd_di" bpmnElement="Flow_ToNotify_Pwd"><di:waypoint x="640" y="420" /><di:waypoint x="640" y="350" /><di:waypoint x="1100" y="350" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToNotify_Replace_di" bpmnElement="Flow_ToNotify_Replace"><di:waypoint x="980" y="450" /><di:waypoint x="1050" y="450" /><di:waypoint x="1050" y="350" /><di:waypoint x="1100" y="350" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToNotify_Procure_di" bpmnElement="Flow_ToNotify_Procure"><di:waypoint x="980" y="640" /><di:waypoint x="1050" y="640" /><di:waypoint x="1050" y="350" /><di:waypoint x="1100" y="350" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToEnd1_di" bpmnElement="Flow_ToEnd1"><di:waypoint x="1200" y="310" /><di:waypoint x="1260" y="310" /></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
