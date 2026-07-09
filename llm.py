@@ -108,18 +108,20 @@ class _MockCompletions:
 
     # ---- 子能力 ----
     def _route(self, t):
-        if re.search(r"退|赔|补偿|售后|发票|换货", t): return "售后"
-        if re.search(r"到哪|物流|配送|送到|快递|多久|什么时候到", t): return "物流"
-        if re.search(r"多少钱|价格|库存|有货|推荐|买|商品", t): return "导购"
+        # 【修改为 IT 服务台专属规则】
+        if re.search(r"工单|IT-|报修|电脑|笔记本|键盘|鼠标|设备|蓝屏|换新", t): return "设备咨询"
+        if re.search(r"网络|断网|交换机|外网|网线|不能上网", t): return "网络故障"
+        if re.search(r"密码|账号|登录|重置", t): return "密码问题"
         return "其他"
 
     def _summarize(self, t):
-        oid = "、".join(set(re.findall(r"\d{8,}", t)))
-        kw = [k for k in ["退款", "退货", "超时", "补偿", "地址", "发票", "换货"] if k in t]
+        # 【修改为 IT 服务台专属摘要提取】
+        ticket = "、".join(set(re.findall(r"IT-\d+", t)))
+        kw = [k for k in ["工单", "网络", "设备", "密码", "重置", "故障", "报修"] if k in t]
         parts = []
-        if oid: parts.append(f"涉及订单 {oid}")
+        if ticket: parts.append(f"涉及工单 {ticket}")
         if kw: parts.append("诉求关键词:" + "/".join(kw))
-        return ";".join(parts) if parts else "用户进行了若干轮咨询。"
+        return ";".join(parts) if parts else "用户进行了若干轮IT咨询。"
 
     def _judge(self, t):
         # 从 "要点:[...]" 与 "回答:..." 中判断要点是否被覆盖
@@ -134,16 +136,18 @@ class _MockCompletions:
         return json.dumps({"pass": bool(ok)}, ensure_ascii=False)
 
     def _intent(self, t):
-        if re.search(r"退|赔|补偿|售后|发票|换货", t): intent = "退款售后"
-        elif re.search(r"到哪|物流|配送|快递|多久|什么时候到", t): intent = "查物流"
-        elif re.search(r"多少钱|价格|库存|有货", t): intent = "商品咨询"
-        elif re.search(r"订单|查一下|状态", t): intent = "查订单"
+        # 【修改为 IT 服务台专属意图识别】
+        if re.search(r"网络|断网|交换机|外网|网线|不能上网", t): intent = "网络故障"
+        elif re.search(r"密码|账号|登录|重置", t): intent = "密码问题"
+        elif re.search(r"工单|IT-|报修|电脑|笔记本|键盘|鼠标|设备|蓝屏", t): intent = "设备咨询"
         else: intent = "其他"
+        
         ent = {}
-        oid = re.findall(r"\d{8,}", t)
-        if oid: ent["order_id"] = oid[0]
-        for p in ["蓝牙耳机", "黄焖鸡米饭", "麻辣烫", "机械键盘"]:
-            if p in t: ent["product"] = p
+        ticket = re.findall(r"IT-\d+", t)
+        if ticket: ent["ticket_id"] = ticket[0]
+        # 检查你 data.py 里的设备名
+        for p in ["办公笔记本", "网络交换机", "服务器"]:
+            if p in t: ent["device"] = p
         return json.dumps({"intent": intent, "entities": ent}, ensure_ascii=False)
 
     def _called_tools(self, msgs):
@@ -165,49 +169,55 @@ class _MockCompletions:
         """ReAct 决策:已有观察则决定下一步,信息齐全则给最终答案。"""
         avail = {t["function"]["name"] for t in tools}
         called = self._called_tools(msgs)
-        oid_list = re.findall(r"\d{8,}", user_txt)
-        oid = oid_list[0] if oid_list else None
-        wants_status = bool(re.search(r"到哪|物流|配送|状态|送到|什么时候|订单", user_txt))
-        wants_policy = bool(re.search(r"超时|补偿|退|赔|政策|发票|换货", user_txt))
-        wants_product = bool(re.search(r"多少钱|价格|库存|有货", user_txt))
+        ticket_list = re.findall(r"IT-\d+", user_txt)
+        ticket_id = ticket_list[0] if ticket_list else None
+        
+        # 【修改为 IT 服务台专属决策意图】
+        wants_status = bool(re.search(r"工单|IT-|状态|查一下|报修|设备|故障", user_txt))
+        wants_policy = bool(re.search(r"政策|手册|规定|如何|怎么办|怎么处理", user_txt))
+        wants_device = bool(re.search(r"多少钱|价格|库存|有没有|设备|电脑|笔记本|换新", user_txt))
 
-        # 第一步:查订单/物流
-        if oid and wants_status and "query_order" in avail and "query_order" not in called:
-            return _Resp(_Msg(tool_calls=[_ToolCall("query_order", {"order_id": oid})]))
-        if oid and wants_status and "query_order" not in avail \
-           and "track_logistics" in avail and "track_logistics" not in called:
-            return _Resp(_Msg(tool_calls=[_ToolCall("track_logistics", {"order_id": oid})]))
-        # 下一步:查政策(ReAct 多步的体现)
+        # 第一步:查工单/状态
+        if ticket_id and wants_status and "query_ticket" in avail and "query_ticket" not in called:
+            return _Resp(_Msg(tool_calls=[_ToolCall("query_ticket", {"ticket_id": ticket_id})]))
+        
+        # 第二步:查政策 (RAG)
         if wants_policy and "search_policy" in avail and "search_policy" not in called:
-            q = "超时补偿" if re.search(r"超时|补偿", user_txt) else user_txt
-            return _Resp(_Msg(tool_calls=[_ToolCall("search_policy", {"q": q})]))
-        # 商品查询
-        if wants_product and "query_product" in avail and "query_product" not in called:
-            prod = next((p for p in ["蓝牙耳机", "黄焖鸡米饭", "麻辣烫", "机械键盘"] if p in user_txt), "蓝牙耳机")
-            return _Resp(_Msg(tool_calls=[_ToolCall("query_product", {"name": prod})]))
+            return _Resp(_Msg(tool_calls=[_ToolCall("search_policy", {"q": user_txt})]))
+            
+        # 第三步:查设备/库存
+        if wants_device and "query_device" in avail and "query_device" not in called:
+            device = next((p for p in ["办公笔记本", "网络交换机", "服务器"] if p in user_txt), "办公笔记本")
+            return _Resp(_Msg(tool_calls=[_ToolCall("query_device", {"name": device})]))
+            
         # 信息齐全 → 终态回复
         return _Resp(_Msg(content=self._final_answer(msgs, user_txt)))
 
     def _final_answer(self, msgs, user_txt):
         obs = self._observations(msgs)
-        order = next((o for o in obs if isinstance(o, dict) and "status" in o), None)
+        ticket = next((o for o in obs if isinstance(o, dict) and "status" in o), None)
         policy = next((o for o in obs if isinstance(o, list)), None)
-        product = next((o for o in obs if isinstance(o, dict) and "price" in o and "status" not in o), None)
+        device = next((o for o in obs if isinstance(o, dict) and "price" in o and "status" not in o), None)
+        
         parts = []
-        if order and "error" not in order:
-            seg = f"您的订单{order.get('order_id','')}当前状态:{order.get('status')}"
-            if order.get("eta"): seg += f",预计{order.get('eta')}"
-            if order.get("rider"): seg += f",骑手{order.get('rider')}"
-            if order.get("tracking"): seg += f",快递单号{order.get('tracking')}({order.get('carrier','')})"
+        
+        # 【修改为 IT 专属回复结构】
+        if ticket and "error" not in ticket:
+            seg = f"您查询的工单 {ticket.get('ticket_id','')} 当前状态: {ticket.get('status')}"
+            if ticket.get("device"): seg += f", 涉及设备: {ticket.get('device')}"
             parts.append(seg + "。")
+            
         if policy:
-            parts.append("相关政策:" + "；".join(policy))
-        if product and "error" not in product:
-            parts.append(f"{product['name']}售价{product['price']}元,库存{product['stock']}件,评分{product['rating']}。")
+            parts.append("参考政策:" + "；".join(policy))
+            
+        if device and "error" not in device:
+            parts.append(f"设备 {device['name']} 参考价格: {device['price']}元, 库存: {device['stock']}件, 保修状态: {device['warranty']}。")
+            
         if any(isinstance(o, dict) and o.get("error") for o in obs):
-            parts.append("抱歉,未能查询到对应信息,请核对后再试。")
+            parts.append("抱歉,未能查询到对应信息,请核对工单号或设备名后重试。")
+            
         if not parts:
-            parts.append("您好,我可以帮您查订单、查物流、查商品或处理售后,请问需要什么?")
+            parts.append("您好,我是企业IT服务助理,可以帮您查询工单状态、报修设备、解决网络故障或重置密码,请问需要什么帮助?")
         return "".join(parts)
 
 
