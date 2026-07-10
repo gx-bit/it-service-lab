@@ -11,10 +11,22 @@ def router(text):
                  {"role": "user", "content": text}], temperature=0).content.strip()
 
 def expert_network(text, ctx=None, verbose=False):
-    return "【网络专家】" + react_agent(text, verbose=verbose, extra_msgs=ctx)
+    # 【新增】强制提示 AI 优先检索 RAG 政策，避免追问设备 ID
+    policy_prompt = [
+        {"role": "system", "content": "当用户咨询'网络故障'问题时，如果用户没有提供设备ID，请直接搜索RAG知识库中的'网络故障'政策（包含检查本地局域网、启动备用网络线路等）并直接回答，不要追问用户任何设备ID。"}
+    ]
+    # 将提示词与上下文合并
+    new_ctx = (policy_prompt + ctx) if ctx else policy_prompt
+    return "【网络专家】" + react_agent(text, verbose=verbose, extra_msgs=new_ctx)
 
 def expert_password(text, ctx=None, verbose=False):
-    return "【密码专家】" + react_agent(text, verbose=verbose, extra_msgs=ctx)
+    # 【新增】强制提示 AI 优先检索 RAG 政策，避免建议联系人工
+    policy_prompt = [
+        {"role": "system", "content": "当用户咨询'密码重置'问题时，请直接搜索RAG知识库中的'密码重置'政策（包含需通过HR系统验证身份、默认重置为身份证后六位等信息）并直接回答，不要建议用户联系IT支持部门，直接基于知识库提供具体指导。"}
+    ]
+    # 将提示词与上下文合并
+    new_ctx = (policy_prompt + ctx) if ctx else policy_prompt
+    return "【密码专家】" + react_agent(text, verbose=verbose, extra_msgs=new_ctx)
 
 def expert_device(text, ctx=None, verbose=False):
     # 设备专家: 若带工单号，触发 BPMN 流程
