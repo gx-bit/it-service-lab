@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+import sys
+import io
+# 强制控制台输出使用 UTF-8 编码，解决 Windows Jenkins 的中文乱码问题
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
 import json, time
 from llm import chat
 from agent import orchestrate
