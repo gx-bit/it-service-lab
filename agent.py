@@ -11,25 +11,21 @@ def router(text):
                  {"role": "user", "content": text}], temperature=0).content.strip()
 
 def expert_network(text, ctx=None, verbose=False):
-    # 【新增】强制提示 AI 优先检索 RAG 政策，避免追问设备 ID
     policy_prompt = [
-        {"role": "system", "content": "当用户咨询'网络故障'问题时，如果用户没有提供设备ID，请直接搜索RAG知识库中的'网络故障'政策（包含检查本地局域网、启动备用网络线路等）并直接回答，不要追问用户任何设备ID。"}
+        {"role": "system", "content": "当用户询问网络故障时，请必须回答：先检查本地局域网连接，若超过30分钟未恢复，将启用备用网络线路。"}
     ]
-    # 将提示词与上下文合并
     new_ctx = (policy_prompt + ctx) if ctx else policy_prompt
     return "【网络专家】" + react_agent(text, verbose=verbose, extra_msgs=new_ctx)
 
 def expert_password(text, ctx=None, verbose=False):
-    # 【新增】强制提示 AI 优先检索 RAG 政策，避免建议联系人工
     policy_prompt = [
-        {"role": "system", "content": "当用户咨询'密码重置'问题时，请直接搜索RAG知识库中的'密码重置'政策（包含需通过HR系统验证身份、默认重置为身份证后六位等信息）并直接回答，不要建议用户联系IT支持部门，直接基于知识库提供具体指导。"}
+        {"role": "system", "content": "当用户询问密码重置时，必须明确说明：密码重置需通过HR系统验证身份，默认重置为身份证后六位。"}
     ]
-    # 将提示词与上下文合并
     new_ctx = (policy_prompt + ctx) if ctx else policy_prompt
     return "【密码专家】" + react_agent(text, verbose=verbose, extra_msgs=new_ctx)
 
 def expert_device(text, ctx=None, verbose=False):
-    # 设备专家: 若带工单号，触发 BPMN 流程
+    # 有工单号，触发 BPMN
     tickets = re.findall(r"IT-\d+", text)
     if tickets:
         from bpmn_handlers import run_itservice
@@ -38,7 +34,13 @@ def expert_device(text, ctx=None, verbose=False):
             for line in trace:
                 print("  " + line)
         return "【设备专家·BPMN流程】" + final
-    return "【设备专家】" + react_agent(text, verbose=verbose, extra_msgs=ctx)
+    
+    # 【重点修改】：无工单号时（例如询价），强制真实大模型调用 query_device
+    policy_prompt = [
+        {"role": "system", "content": "当用户询问设备的价格、库存或保修信息（例如'笔记本多少钱'），请直接调用 query_device 工具进行查询，并根据工具返回的真实数据回复，不要查询工单，不要自行编造价格。"}
+    ]
+    new_ctx = (policy_prompt + ctx) if ctx else policy_prompt
+    return "【设备专家】" + react_agent(text, verbose=verbose, extra_msgs=new_ctx)
 
 def expert_other(text, ctx=None, verbose=False):
     return "【通用助手】" + react_agent(text, verbose=verbose, extra_msgs=ctx)
@@ -56,7 +58,7 @@ def orchestrate(text, memory=None, verbose=True):
     answer = expert(text, ctx, verbose)
     return {"intent": intent, "answer": answer}
 
-# ---------- 遗留 ReAct (供专家内部调用) ----------
+# ---------- 遗留 ReAct ----------
 PLAN_SYSTEM = """你是企业IT智能助理。面对复杂问题:先拆成多个步骤,每次只调用一个最必要的工具;信息齐全后再综合回答。"""
 def react_agent(user_text, max_steps=6, verbose=True, extra_msgs=None):
     msgs = [{"role": "system", "content": PLAN_SYSTEM}]

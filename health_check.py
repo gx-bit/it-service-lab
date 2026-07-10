@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
+import sys
+import io
+# 强制控制台输出使用 UTF-8 编码，解决 Windows Jenkins 的中文乱码问题
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
 import requests
 import time
-import json
 
 SERVICES = [
     {"name": "工单微服务", "url": "http://localhost:8001/tickets/IT-20260601"},
@@ -29,7 +33,7 @@ def check_health():
             status = "不可用"
             report["down"] += 1
         
-        elapsed = round((time.time() - start) * 1000, 2) # 毫秒
+        elapsed = round((time.time() - start) * 1000, 2)
         report["total"] += 1
         report["latencies"].append(elapsed)
         
@@ -39,7 +43,6 @@ def check_health():
     availability = (report["up"] / report["total"]) * 100
     avg_latency = sum(report["latencies"]) / len(report["latencies"])
     
-    # 删除所有特殊符号，只保留纯文字
     print(f"\n核心指标汇总:")
     print(f"  * 可用性 (Availability): {availability}% (存活 {report['up']}/{report['total']})")
     print(f"  * 平均响应时间 (Avg Latency): {avg_latency} ms")
