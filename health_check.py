@@ -22,7 +22,7 @@ def check_health():
     for svc in SERVICES:
         start = time.time()
         try:
-            r = requests.get(svc["url"], timeout=2)
+            requests.get(svc["url"], timeout=2)
             status = "正常"
             report["up"] += 1
         except Exception:
@@ -39,10 +39,11 @@ def check_health():
     availability = (report["up"] / report["total"]) * 100
     avg_latency = sum(report["latencies"]) / len(report["latencies"])
     
-    print(f"\n📊 核心指标汇总:")
-    print(f"  • 可用性 (Availability): {availability}% (存活 {report['up']}/{report['total']})")
-    print(f"  • 平均响应时间 (Avg Latency): {avg_latency} ms")
-    print(f"  • 健壮性 (Robustness): 超时阈值设为 2 秒，异常已捕获处理")
+    # 删除所有特殊符号，只保留纯文字
+    print(f"\n核心指标汇总:")
+    print(f"  * 可用性 (Availability): {availability}% (存活 {report['up']}/{report['total']})")
+    print(f"  * 平均响应时间 (Avg Latency): {avg_latency} ms")
+    print(f"  * 健壮性 (Robustness): 超时阈值设为 2 秒，异常已捕获处理")
     print("=" * 60)
 
 if __name__ == "__main__":
