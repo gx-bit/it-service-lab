@@ -22,12 +22,11 @@ def check_health():
     for svc in SERVICES:
         start = time.time()
         try:
-            # 设置2秒超时，检测健壮性
             r = requests.get(svc["url"], timeout=2)
-            status = "🟢 正常"
+            status = "正常"
             report["up"] += 1
-        except Exception as e:
-            status = "🔴 不可用"
+        except Exception:
+            status = "不可用"
             report["down"] += 1
         
         elapsed = round((time.time() - start) * 1000, 2) # 毫秒
